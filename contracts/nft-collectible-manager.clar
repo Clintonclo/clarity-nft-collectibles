@@ -122,3 +122,109 @@
         (try! (nft-burn? collectible-token token-id owner))
         (map-set burned-collectibles token-id true)
         (ok true)))
+
+;; Transfers collectible ownership between principals
+(define-public (transfer-collectible (token-id uint) (from principal) (to principal))
+    (begin
+        (asserts! (is-eq to tx-sender) error-not-collectible-owner)
+        (asserts! (not (is-collectible-burned token-id)) error-already-burned)
+        (let ((current-owner (unwrap! (nft-get-owner? collectible-token token-id) error-not-collectible-owner)))
+            (asserts! (is-eq current-owner from) error-not-collectible-owner)
+            (try! (nft-transfer? collectible-token token-id from to))
+            (ok true))))
+
+;; Updates the metadata URI for a collectible
+(define-public (modify-collectible-uri (token-id uint) (updated-uri (string-ascii 256)))
+    (let ((owner (unwrap! (nft-get-owner? collectible-token token-id) error-collectible-not-found)))
+        (asserts! (is-eq owner tx-sender) error-uri-update-not-allowed)
+        (asserts! (check-uri-validity updated-uri) error-invalid-uri)
+        (map-set collectible-uri token-id updated-uri)
+        (ok true)))
+
+;; =================================================================
+;; Read-Only Functions
+;; =================================================================
+
+;; Retrieves the metadata URI for a collectible
+(define-read-only (get-collectible-uri (token-id uint))
+    (ok (map-get? collectible-uri token-id)))
+
+;; Gets the current owner of a collectible
+(define-read-only (fetch-owner (token-id uint))
+    (ok (nft-get-owner? collectible-token token-id)))
+
+;; Returns the latest minted collectible ID
+(define-read-only (get-current-collectible-id)
+    (ok (var-get current-collectible-id)))
+
+;; Checks if a collectible has been burned
+(define-read-only (has-been-burned (token-id uint))
+    (ok (is-collectible-burned token-id)))
+
+;; Returns the burned status of a collectible (true if burned, false otherwise)
+(define-read-only (is-collectible-burned-status (token-id uint))
+    (ok (is-collectible-burned token-id)))
+
+;; Retrieves the metadata URI for a specific collectible, can be used for faster access without extra data
+(define-read-only (get-specific-uri (token-id uint))
+    (ok (map-get? collectible-uri token-id)))
+
+;; Retrieves the total number of collectibles minted
+(define-read-only (get-total-collectibles)
+    (ok (var-get current-collectible-id)))
+
+;; Lists collectibles metadata URIs within a specified range of collectible IDs
+(define-read-only (list-collectibles-metadata (start-id uint) (count uint))
+    (ok (map id-details (unwrap-panic (as-max-len? (fetch-collectibles start-id count) u50)))))
+
+;; Checks if a collectible exists based on its token ID
+(define-read-only (collectible-exists? (token-id uint))
+    (ok (is-some (map-get? collectible-uri token-id))))
+
+;; Retrieves batch information for a specific collectible ID
+(define-read-only (get-batch-info (token-id uint))
+    (ok (map-get? batch-info token-id)))
+
+;; Lists collectibles within a specified range
+(define-read-only (list-batch-collectibles (start-id uint) (count uint))
+    (ok (map id-details (unwrap-panic (as-max-len? (fetch-collectibles start-id count) u50)))))
+
+;; Helper function to create collectible details object
+(define-private (id-details (id uint))
+    {
+        collectible-id: id,
+        uri: (unwrap-panic (get-collectible-uri id)),
+        owner: (unwrap-panic (fetch-owner id)),
+        burned: (unwrap-panic (has-been-burned id))
+    })
+
+;; Checks if a collectible exists based on its token ID
+(define-read-only (check-collectible-existence (token-id uint))
+    (ok (is-some (map-get? collectible-uri token-id))))
+
+;; Retrieves full metadata of a collectible by its token ID
+(define-read-only (get-collectible-metadata-details (token-id uint))
+    (let ((uri (map-get? collectible-uri token-id))
+          (owner (nft-get-owner? collectible-token token-id))
+          (burned (is-collectible-burned token-id)))
+        (ok {collectible-id: token-id, uri: uri, owner: owner, burned: burned})))
+
+(define-read-only (get-collectible-metadata (token-id uint))
+(ok (map-get? collectible-uri token-id)))
+
+;; Helper function to generate sequence of collectible IDs
+(define-private (fetch-collectibles (start uint) (count uint))
+    (map + 
+        (list start) 
+        (build-sequence count)))
+
+;; Helper function to build numeric sequence
+(define-private (build-sequence (num uint))
+    (map - (list num)))
+
+;; =================================================================
+;; Contract Initialization
+;; =================================================================
+
+(begin
+    (var-set current-collectible-id u0))
